@@ -10,6 +10,8 @@ http://tudat.tudelft.nl/LICENSE.
 """
 
 from interplanetary_transfer_helper_functions import *
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 # Load spice kernels.
 spice.load_standard_kernels()
@@ -51,3 +53,85 @@ if __name__ == "__main__":
 
     # Evaluate the Lambert arc model at each of the epochs in the state_history
     lambert_history = get_lambert_arc_history(lambert_arc_ephemeris, state_history)
+
+    positions = []
+    velocities = []
+
+    for epoch, state in state_history.items():
+        position = state[:3]  # Extract the first three components (x, y, z)
+        
+        positions.append(position)
+
+    # Convert positions and velocities to numpy arrays for easier manipulation
+    positions = np.array(positions)
+
+    # Extract x, y, z coordinates from positions
+    x = positions[:, 0]
+    y = positions[:, 1]
+    z = positions[:, 2]
+
+    # Create a 3D plot
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot the trajectory
+    ax.plot(x, y, z, label="Spacecraft Trajectory", color='b')
+
+    # Plot settings
+    ax.set_xlabel('X [m]')
+    ax.set_ylabel('Y [m]')
+    ax.set_zlabel('Z [m]')
+    ax.set_title('Spacecraft Trajectory in 3D')
+    ax.legend()
+
+    # Show the plot
+    plt.show()
+
+
+    # Initialize lists to store differences
+    times = []
+    diff_x = []
+    diff_y = []
+    diff_z = []
+
+    # Compute differences in position at each epoch
+    for epoch in state_history.keys():
+        # Get positions from both histories
+        numerical_position = state_history[epoch][:3]  # x, y, z from numerical propagation
+        lambert_position = lambert_history[epoch][:3]  # x, y, z from Lambert solution
+        
+        # Compute the difference
+        position_difference = np.array(numerical_position) - np.array(lambert_position)
+        
+        # Store results
+        times.append(epoch)       # Store time
+        diff_x.append(position_difference[0])  # Difference in X
+        diff_y.append(position_difference[1])  # Difference in Y
+        diff_z.append(position_difference[2])  # Difference in Z
+
+    # Convert lists to numpy arrays
+    times = np.array(times)
+    diff_x = np.array(diff_x)
+    diff_y = np.array(diff_y)
+    diff_z = np.array(diff_z)
+
+    # Convert times to days for better readability (if needed)
+    times_days = (times - times[0]) / (24 * 3600)  # Convert seconds to days
+
+    # Create figure
+    plt.figure(figsize=(10, 6))
+
+    # Plot x-component difference
+    plt.plot(times_days, diff_x, label="Δx (m)", color="r")
+    plt.plot(times_days, diff_y, label="Δy (m)", color="g")
+    plt.plot(times_days, diff_z, label="Δz (m)", color="b")
+
+    # Labels and title
+    plt.xlabel("Time (days)")
+    plt.ylabel("Position Difference (m)")
+    plt.title("Difference Between Lambert Solution and Numerical Propagation")
+    plt.legend()
+    plt.grid()
+
+    # Show plot
+    plt.show()

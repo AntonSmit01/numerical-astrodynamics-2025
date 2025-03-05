@@ -23,10 +23,10 @@ from tudatpy.numerical_simulation import (
 )
 
 # Define departure/arrival epoch - in seconds since J2000
-departure_epoch = XXXX
-time_of_flight = XXXX
+departure_epoch = 1252.846393*24*60*60
+time_of_flight = 204.366265*24*60*60
 arrival_epoch = departure_epoch + time_of_flight
-target_body = XXXX
+target_body = "Mars"
 global_frame_orientation = "ECLIPJ2000"
 fixed_step_size = 3600.0
 
@@ -413,8 +413,39 @@ def get_unperturbed_propagator_settings(
     Propagation settings of the unperturbed trajectory.
     """
 
-    # Create propagation settings.
-    propagator_settings = XXXX
+    # Define the accelerations acting on spacecraft (only Sun's gravity)
+    # Define accelerations acting on vehicle.
+    acceleration_settings_on_vehicle = dict()
+    acceleration_settings_on_vehicle["Sun"] = [
+    propagation_setup.acceleration.point_mass_gravity()
+    ]
+
+    # Create global accelerations dictionary.
+    acceleration_settings = {"Spacecraft": acceleration_settings_on_vehicle}
+
+    #   Create acceleration models.
+    acceleration_models = propagation_setup.create_acceleration_models(
+        bodies, acceleration_settings, ["Spacecraft"], ["Sun"]
+    )
+
+    # Define the integrator settings (Runge-Kutta 4th order method with a fixed step size)
+    integrator_settings = propagation_setup.integrator.runge_kutta_4(
+        initial_time, 3600.0  # 3600-second time step
+    )
+
+    dependent_variables = [propagation_setup.dependent_variable.relative_position("Sun", "Spacecraft")]
+
+    # Create propagation settings with unperturbed dynamics (only Sun's gravity)
+    propagator_settings = propagation_setup.propagator.translational(
+        ["Sun"],
+        acceleration_models,
+        ["Spacecraft"],
+        initial_state,
+        departure_epoch,
+        integrator_settings,        
+        termination_condition,
+        output_variables=dependent_variables
+    )
 
     return propagator_settings
 
@@ -448,11 +479,28 @@ def get_perturbed_propagator_settings(
     Propagation settings of the perturbed trajectory.
     """
 
-    # Define accelerations acting on vehicle.
-    acceleration_settings_on_spacecraft = XXXX
 
-    # Create propagation settings.
-    propagator_settings = XXXX
+    # Define accelerations acting on spacecraft (include Sun's gravity and others as needed)
+    acceleration_settings_on_spacecraft = {
+        "Sun": [propagation_setup.acceleration.point_mass_gravity()],
+        "Earth": [propagation_setup.acceleration.point_mass_gravity()],
+        "Mars": [propagation_setup.acceleration.point_mass_gravity()],
+        # Add other accelerations if necessary (e.g., drag, other perturbations)
+    }
+
+    # Define the integrator settings (Runge-Kutta 4th order method with a fixed step size)
+    integrator_settings = propagation_setup.integrator.runge_kutta_4(
+        initial_time, 60.0  # 60-second time step
+    )
+
+    # Create propagation settings with perturbed dynamics (including multiple forces)
+    propagator_settings = propagation_setup.propagator.single_arc(
+        integrator_settings,
+        acceleration_settings_on_spacecraft,
+        bodies,
+        initial_state,
+        termination_condition
+    )
 
     return propagator_settings
 
@@ -476,6 +524,18 @@ def create_simulation_bodies() -> environment.SystemOfBodies:
 
     """
 
-    bodies = XXXX
+    # Define string names for bodies to be created from default.
+    bodies_to_create = ["Sun", "Earth", "Mars"]
+
+    # Create default body settings, usually from `spice`.
+    body_settings = environment_setup.get_default_body_settings(
+        bodies_to_create,
+        target_body,
+        global_frame_orientation)
+
+    bodies = environment_setup.create_system_of_bodies(body_settings)
+    
+    # Create Spacecraft.
+    bodies.create_empty_body("Spacecraft")    
 
     return bodies
