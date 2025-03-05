@@ -31,9 +31,9 @@ from tudatpy.numerical_simulation import environment_setup, propagation_setup
 current_directory = os.getcwd()
 
 # # student number: 1244779 --> 1244ABC
-A = XXXX
-B = XXXX
-C = XXXX
+A = 2
+B = 1
+C = 7
 
 simulation_start_epoch = (
     35.4 * constants.JULIAN_YEAR
