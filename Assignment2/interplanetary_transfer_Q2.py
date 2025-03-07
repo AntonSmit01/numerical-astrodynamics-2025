@@ -10,6 +10,8 @@ http://tudat.tudelft.nl/LICENSE.
 """
 
 from interplanetary_transfer_helper_functions import *
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 # Load spice kernels.
 spice.load_standard_kernels()
@@ -30,7 +32,7 @@ if __name__ == "__main__":
     lambert_arc_ephemeris = get_lambert_problem_result(
         bodies, target_body, departure_epoch, arrival_epoch
     )
-
+    
     """
     case_i: The initial and final propagation time equal to the initial and final times of the Lambert arc.
     case_ii: The initial and final propagation time shifted forward and backward in time, respectively, by ∆t=1 hour.
@@ -45,11 +47,18 @@ if __name__ == "__main__":
     for case in cases:
 
         # Define the initial and final propagation time for the current case
-        departure_epoch_with_buffer = XXXX
-        arrival_epoch_with_buffer = XXXX
+        departure_epoch_with_buffer = departure_epoch
+        arrival_epoch_with_buffer = arrival_epoch
 
         # Perform propagation
-        dynamics_simulator = XXXX
+        termination_settings = propagation_setup.propagator.time_termination(arrival_epoch_with_buffer)
+        dynamics_simulator = propagate_trajectory(
+        departure_epoch_with_buffer,
+        termination_settings,
+        bodies,
+        lambert_arc_ephemeris,
+        use_perturbations=False,
+    )
         write_propagation_results_to_file(
             dynamics_simulator,
             lambert_arc_ephemeris,
@@ -59,3 +68,21 @@ if __name__ == "__main__":
 
         state_history = dynamics_simulator.propagation_results.state_history
         lambert_history = get_lambert_arc_history(lambert_arc_ephemeris, state_history)
+
+    lambert_acceleration = {}
+    time_list = np.array(list(state_history.keys()))  # Extract times
+
+    # Compute numerical derivative of velocity using finite differences
+    for i in range(1, len(time_list) - 1):
+        t1, t2 = time_list[i-1], time_list[i+1]
+        v1, v2 = lambert_history[t1][3:6], lambert_history[t2][3:6]
+
+        # Compute central difference: a = (v2 - v1) / (t2 - t1)
+        a_lambert = (v2 - v1) / (t2 - t1)
+        lambert_acceleration[time_list[i]] = a_lambert
+
+
+    position_error(state_history, lambert_history)
+    velocity_error(state_history, lambert_history)
+    acceleration_error(time_list, lambert_acceleration, dynamics_simulator)
+    plotter_3D(state_history)

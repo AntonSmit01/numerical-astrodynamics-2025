@@ -10,6 +10,8 @@ http://tudat.tudelft.nl/LICENSE.
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from tudatpy import constants, numerical_simulation
 from tudatpy.astro import element_conversion, two_body_dynamics
 from tudatpy.data import save2txt
@@ -433,7 +435,9 @@ def get_unperturbed_propagator_settings(
         initial_time, 3600.0  # 3600-second time step
     )
 
-    dependent_variables = [propagation_setup.dependent_variable.relative_position("Sun", "Spacecraft")]
+    dependent_variables = [propagation_setup.dependent_variable.relative_position("Sun", "Spacecraft"),
+                           propagation_setup.dependent_variable.relative_velocity("Sun", "Spacecraft"),
+                           propagation_setup.dependent_variable.total_acceleration("Spacecraft")]
 
     # Create propagation settings with unperturbed dynamics (only Sun's gravity)
     propagator_settings = propagation_setup.propagator.translational(
@@ -478,28 +482,65 @@ def get_perturbed_propagator_settings(
     ------
     Propagation settings of the perturbed trajectory.
     """
+    #Create cannonball constants
+    ref_area = 20 # m^2
+    C_R = 1.2
+    mass_sc = 1000 #kg
 
+    # Define the spacecraft mass (required for radiation pressure)
+    bodies.get("Spacecraft").mass = mass_sc  # Mass in kg
 
-    # Define accelerations acting on spacecraft (include Sun's gravity and others as needed)
+    # Define accelerations acting on spacecraft
     acceleration_settings_on_spacecraft = {
-        "Sun": [propagation_setup.acceleration.point_mass_gravity()],
-        "Earth": [propagation_setup.acceleration.point_mass_gravity()],
-        "Mars": [propagation_setup.acceleration.point_mass_gravity()],
-        # Add other accelerations if necessary (e.g., drag, other perturbations)
+        "Sun": [propagation_setup.acceleration.point_mass_gravity()]
     }
+
+    # Add other celestial bodies with point-mass gravity
+    for body in ["Venus", "Earth", "Moon", "Mars", "Jupiter", "Saturn"]:
+        acceleration_settings_on_spacecraft[body] = [propagation_setup.acceleration.point_mass_gravity()]
+
+    # Define radiation pressure settings with Earth as an occulting body
+    radiation_pressure_settings = environment_setup.radiation_pressure.cannonball_radiation_target(
+        ref_area, C_R, per_source_occulting_bodies={"Sun": ["Earth"]},
+    )
+
+    # Check if a radiation pressure model already exists before adding a new one
+    #if not bodies.get("Spacecraft").get_radiation_pressure_target_models():
+    environment_setup.add_radiation_pressure_target_model(
+            bodies, "Spacecraft", radiation_pressure_settings
+        )
+
+    # Now add radiation pressure to the acceleration settings
+    #acceleration_settings_on_spacecraft["Sun"].append(propagation_setup.acceleration.radiation_pressure())
+
+    # Create global accelerations dictionary
+    acceleration_settings = {"Spacecraft": acceleration_settings_on_spacecraft}
+
+    # Create acceleration models (Now the spacecraft has a radiation model)
+    acceleration_models = propagation_setup.create_acceleration_models(
+        bodies, acceleration_settings, ["Spacecraft"], ["Sun"]
+    )
+
 
     # Define the integrator settings (Runge-Kutta 4th order method with a fixed step size)
     integrator_settings = propagation_setup.integrator.runge_kutta_4(
-        initial_time, 60.0  # 60-second time step
+        initial_time, 3600.0  # 3600-second time step
     )
 
-    # Create propagation settings with perturbed dynamics (including multiple forces)
-    propagator_settings = propagation_setup.propagator.single_arc(
-        integrator_settings,
-        acceleration_settings_on_spacecraft,
-        bodies,
+    dependent_variables = [propagation_setup.dependent_variable.relative_position("Sun", "Spacecraft"),
+                           propagation_setup.dependent_variable.relative_velocity("Sun", "Spacecraft"),
+                           propagation_setup.dependent_variable.total_acceleration("Spacecraft")]
+
+    # Create propagation settings with unperturbed dynamics (only Sun's gravity)
+    propagator_settings = propagation_setup.propagator.translational(
+        ["Sun"],
+        acceleration_models,
+        ["Spacecraft"],
         initial_state,
-        termination_condition
+        departure_epoch,
+        integrator_settings,        
+        termination_condition,
+        output_variables=dependent_variables
     )
 
     return propagator_settings
@@ -525,7 +566,7 @@ def create_simulation_bodies() -> environment.SystemOfBodies:
     """
 
     # Define string names for bodies to be created from default.
-    bodies_to_create = ["Sun", "Earth", "Mars"]
+    bodies_to_create = ["Sun", "Earth", "Mars", "Venus", "Moon", "Jupiter","Saturn"]
 
     # Create default body settings, usually from `spice`.
     body_settings = environment_setup.get_default_body_settings(
@@ -539,3 +580,163 @@ def create_simulation_bodies() -> environment.SystemOfBodies:
     bodies.create_empty_body("Spacecraft")    
 
     return bodies
+
+
+def position_error(state_history, lambert_history):
+    # Initialize lists to store differences
+    times = []
+    diff_x = []
+    diff_y = []
+    diff_z = []
+
+    # Compute differences in position at each epoch
+    for epoch in state_history.keys():
+        # Get positions from both histories
+        numerical_position = state_history[epoch][:3]  # x, y, z from numerical propagation
+        lambert_position = lambert_history[epoch][:3]  # x, y, z from Lambert solution
+        
+        # Compute the difference
+        position_difference = abs(np.array(numerical_position) - np.array(lambert_position))
+        
+        # Store results
+        times.append(epoch)       # Store time
+        diff_x.append(position_difference[0])  # Difference in X
+        diff_y.append(position_difference[1])  # Difference in Y
+        diff_z.append(position_difference[2])  # Difference in Z
+
+    # Convert lists to numpy arrays
+    times = np.array(times)
+    diff_x = np.array(diff_x)
+    diff_y = np.array(diff_y)
+    diff_z = np.array(diff_z)
+
+    # Convert times to days for better readability (if needed)
+    times_days = (times - times[0]) / (24 * 3600)  # Convert seconds to days
+
+    # Create figure
+    plt.figure(figsize=(10, 6))
+
+    # Plot x-component difference
+    plt.plot(times_days, diff_x, label="Δx (m)", color="r")
+    plt.plot(times_days, diff_y, label="Δy (m)", color="g")
+    plt.plot(times_days, diff_z, label="Δz (m)", color="b")
+
+    # Labels and title
+    plt.xlabel("Time (days)")
+    plt.ylabel("Position Difference (m)")
+    plt.title("Difference Between Lambert Solution and Numerical Propagation")
+    plt.legend()
+    plt.grid()
+
+    # Show plot
+    plt.show()
+
+
+def velocity_error(state_history, lambert_history):
+    # Initialize lists to store differences
+    times_v = []
+    diff_vx = []
+    diff_vy = []
+    diff_vz = []
+
+    # Compute differences in position at each epoch
+    for epoch in state_history.keys():
+        # Get positions from both histories
+        numerical_velocity = state_history[epoch][3:6]  # vx, vy, vz from numerical propagation
+        lambert_velocity = lambert_history[epoch][3:6]  # vx, vy, vz from Lambert solution
+        
+        # Compute the difference
+        velocity_difference = abs(np.array(numerical_velocity) - np.array(lambert_velocity))
+        
+        # Store results
+        times_v.append(epoch)       # Store time
+        diff_vx.append(velocity_difference[0])  # Difference in X
+        diff_vy.append(velocity_difference[1])  # Difference in Y
+        diff_vz.append(velocity_difference[2])  # Difference in Z
+
+    # Convert lists to numpy arrays
+    times_v = np.array(times_v)
+    diff_vx = np.array(diff_vx)
+    diff_vy = np.array(diff_vy)
+    diff_vz = np.array(diff_vz)
+
+    # Convert times to days for better readability (if needed)
+    times_v_days = (times_v - times_v[0]) / (24 * 3600)  # Convert seconds to days
+
+    # Create figure
+    plt.figure(figsize=(10, 6))
+
+    # Plot x-component difference
+    plt.plot(times_v_days, diff_vx, label="Δx (m/s)", color="r")
+    plt.plot(times_v_days, diff_vy, label="Δy (m/s)", color="g")
+    plt.plot(times_v_days, diff_vz, label="Δz (m/s)", color="b")
+
+    # Labels and title
+    plt.xlabel("Time (days)")
+    plt.ylabel("Velocity Difference (m/s)")
+    plt.title("Difference Between Lambert Solution and Numerical Propagation")
+    plt.legend()
+    plt.grid()
+
+    # Show plot
+    plt.show()
+
+
+
+def acceleration_error(time_list, lambert_acceleration, dynamics_simulator):
+    acceleration_diff = []
+
+    for epoch in time_list[1:-1]:  # Ignore first & last for finite diff
+        num_acceleration = dynamics_simulator.propagation_results.dependent_variable_history[epoch][6:9]  # Extract numerical acceleration
+        lambert_acceleration_vec = lambert_acceleration[epoch]  # Get Lambert acceleration
+
+        # Compute acceleration difference norm
+        delta_a = np.linalg.norm(num_acceleration - lambert_acceleration_vec)
+        acceleration_diff.append(delta_a)
+
+    # Convert to array
+    acceleration_diff = np.array(acceleration_diff)
+
+    # Plot acceleration difference
+    plt.figure(figsize=(10,5))
+    plt.plot(time_list[1:-1], acceleration_diff, label=r'$\Delta a$', color='g')
+    plt.xlabel("Time (s)")
+    plt.ylabel("Acceleration Difference (m/s²)")
+    plt.legend()
+    plt.grid()
+    plt.title("Acceleration Difference Over Time")
+    plt.show()
+
+
+def plotter_3D(state_history):
+    positions = []
+
+    for epoch, state in state_history.items():
+        position = state[:3]  # Extract the first three components (x, y, z)
+        
+        positions.append(position)
+
+    # Convert positions and velocities to numpy arrays for easier manipulation
+    positions = np.array(positions)
+
+    # Extract x, y, z coordinates from positions
+    x = positions[:, 0]
+    y = positions[:, 1]
+    z = positions[:, 2]
+
+    # Create a 3D plot
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot the trajectory
+    ax.plot(x, y, z, label="Spacecraft Trajectory", color='b')
+
+    # Plot settings
+    ax.set_xlabel('X [m]')
+    ax.set_ylabel('Y [m]')
+    ax.set_zlabel('Z [m]')
+    ax.set_title('Spacecraft Trajectory in 3D')
+    ax.legend()
+
+    # Show the plot
+    plt.show()
