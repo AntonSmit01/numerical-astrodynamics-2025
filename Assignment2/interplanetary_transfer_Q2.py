@@ -57,7 +57,7 @@ if __name__ == "__main__":
         termination_settings,
         bodies,
         lambert_arc_ephemeris,
-        use_perturbations=False,
+        use_perturbations=True,
     )
         write_propagation_results_to_file(
             dynamics_simulator,

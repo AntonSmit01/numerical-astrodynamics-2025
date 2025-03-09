@@ -740,3 +740,30 @@ def plotter_3D(state_history):
 
     # Show the plot
     plt.show()
+
+
+def plot_position_deviation(state_history, lambert_history):
+    times = []
+    position_diffs = []
+
+    for epoch in state_history.keys():
+        numerical_position = np.array(state_history[epoch][:3])  # Extract x, y, z
+        lambert_position = np.array(lambert_history[epoch][:3])
+        
+        delta_r = np.linalg.norm(numerical_position - lambert_position)  # Compute norm
+        
+        times.append(epoch)
+        position_diffs.append(delta_r)
+
+    # Convert times to days for readability
+    times_days = (np.array(times) - times[0]) / (24 * 3600)
+    
+    # Plot the deviation
+    plt.figure(figsize=(10, 5))
+    plt.plot(times_days, position_diffs, color='b', label='Δr (m)')
+    plt.xlabel("Time (days)")
+    plt.ylabel("Position Deviation (m)")
+    plt.title("Propagation Deviation from Lambert Arc")
+    plt.legend()
+    plt.grid()
+    plt.show()

@@ -34,7 +34,7 @@ if __name__ == "__main__":
     ##############################################################
     # Compute number of arcs and arc length
     number_of_arcs = 10
-    arc_length = XXXX
+    arc_length = (arrival_epoch - departure_epoch) / number_of_arcs
 
     ##############################################################
 
@@ -42,15 +42,15 @@ if __name__ == "__main__":
     for arc_index in range(number_of_arcs):
 
         # Compute initial and final time for arc
-        current_arc_initial_time = XXXX
-        current_arc_final_time = XXXX
+        current_arc_initial_time = departure_epoch + arc_index * arc_length
+        current_arc_final_time = current_arc_initial_time + arc_length
 
         ###########################################################################
         # RUN CODE FOR QUESTION 3a ################################################
         ###########################################################################
 
         # Propagate dynamics on current arc (use propagate_trajectory function)
-        XXXX
+        propagate_trajectory(current_arc_initial_time, termination_condition=propagation_setup.propagator.time_termination(current_arc_final_time), bodies=bodies, lambert_arc_ephemeris=lambert_arc_ephemeris, use_perturbations=True)
 
         ###########################################################################
         # RUN CODE FOR QUESTION 3c/d/e ############################################
@@ -84,8 +84,18 @@ if __name__ == "__main__":
         )
 
         # Compute required velocity change at beginning of arc to meet required final state
-        initial_state_correction = XXXX
+        initial_state_correction = (state_history[final_epoch] - lambert_history[final_epoch]) @ np.linalg.inv(final_state_transition_matrix)
 
         # Propagate with correction to initial state (use propagate_trajectory function),
         # and its optional initial_state_correction input
-        dynamics_simulator = XXXX
+        dynamics_simulator = propagate_trajectory(
+        current_arc_initial_time,
+        termination_settings,
+        bodies,
+        lambert_arc_ephemeris,
+        use_perturbations=True,
+        initial_state_correction=initial_state_correction
+        )  
+
+
+    plot_position_deviation(state_history, lambert_history)
