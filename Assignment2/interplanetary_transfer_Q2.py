@@ -58,7 +58,7 @@ if __name__ == "__main__":
         bodies,
         lambert_arc_ephemeris,
         use_perturbations=True,
-    )
+        )
         write_propagation_results_to_file(
             dynamics_simulator,
             lambert_arc_ephemeris,

@@ -767,3 +767,85 @@ def plot_position_deviation(state_history, lambert_history):
     plt.legend()
     plt.grid()
     plt.show()
+
+
+def apply_corrections(state_history, transition_matrices, lambert_history):
+    """
+    Modify initial velocity of each arc based on the correction maneuver from part (b).
+    
+    Parameters:
+    state_history (dict): Dictionary containing numerical state history.
+    transition_matrices (dict): Dictionary containing state transition matrices for each arc.
+    lambert_history (dict): Dictionary containing Lambert solution states.
+
+    Returns:
+    dict: Updated state history after applying corrections.
+    """
+    corrected_state_history = {}
+
+    for i, epoch in enumerate(state_history.keys()):
+        if i == 0:
+            corrected_state_history[epoch] = state_history[epoch]  # First state remains unchanged
+            continue
+
+        # Extract previous state
+        prev_epoch = list(state_history.keys())[i - 1]
+        prev_state = corrected_state_history[prev_epoch]
+
+        # Extract transition matrix for this arc
+        Phi_rr = transition_matrices[epoch][:3, :3]  # Position w.r.t. position
+        Phi_rv = transition_matrices[epoch][:3, 3:6]  # Position w.r.t. velocity
+
+        # Compute position deviation
+        delta_r = state_history[epoch][:3] - lambert_history[epoch][:3]
+
+        # Compute velocity correction Δv
+        delta_v = -np.linalg.inv(Phi_rv) @ (Phi_rr @ delta_r)
+
+        # Apply correction to velocity
+        corrected_velocity = prev_state[3:6] + delta_v
+
+        # Store corrected state
+        corrected_state = np.hstack((prev_state[:3], corrected_velocity))
+        corrected_state_history[epoch] = corrected_state
+
+    return corrected_state_history
+
+# Function to plot deviation after applying corrections
+def corrected_position_error(corrected_state_history, lambert_history):
+    times = []
+    diff_x = []
+    diff_y = []
+    diff_z = []
+
+    for epoch in corrected_state_history.keys():
+        numerical_position = corrected_state_history[epoch][:3]
+        lambert_position = lambert_history[epoch][:3]
+
+        position_difference = abs(np.array(numerical_position) - np.array(lambert_position))
+
+        times.append(epoch)
+        diff_x.append(position_difference[0])
+        diff_y.append(position_difference[1])
+        diff_z.append(position_difference[2])
+
+    times = np.array(times)
+    times_days = (times - times[0]) / (24 * 3600)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(times_days, diff_x, label="Δx (m)", color="r")
+    plt.plot(times_days, diff_y, label="Δy (m)", color="g")
+    plt.plot(times_days, diff_z, label="Δz (m)", color="b")
+
+    plt.xlabel("Time (days)")
+    plt.ylabel("Position Difference (m)")
+    plt.title("Deviation After Applying Correction Maneuvers")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def get_closest_epoch(target_epoch, available_epochs):
+    """
+    Finds the closest epoch in the given available epochs.
+    """
+    return min(available_epochs, key=lambda e: abs(e - target_epoch))
